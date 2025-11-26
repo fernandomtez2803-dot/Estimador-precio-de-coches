@@ -1,0 +1,54 @@
+# ============================
+#    PYTHON / ML PROJECT
+# ============================
+
+# Carpetas automáticas de CatBoost
+catboost_info/
+tmp/
+*/catboost_info/
+
+# Notebooks temporales
+.ipynb_checkpoints/
+
+# Entornos virtuales
+venv/
+env/
+.venv/
+
+# Archivos temporales del sistema
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.pdb
+*.DS_Store
+Thumbs.db
+
+# Archivos de logs
+*.log
+
+# Archivos grandes que no deben subirse
+*.h5
+*.hdf5
+*.pickle
+*.pkl
+*.joblib
+
+# Dataset original grande (si pesa demasiado)
+Data/
+*.csv
+!cars_clean.csv   # <-- Permitimos este porque lo usas en tu app
+
+# Modelos opcionales (subimos solo el final)
+*.cbm
+!catboost_cars.cbm   # <-- Permitimos tu modelo final
+
+# Archivos de VSCode
+.vscode/
+*.code-workspace
+
+# Output de Jupyter
+*.out
+
+# Bibliotecas instaladas (no se suben)
+site-packages/
