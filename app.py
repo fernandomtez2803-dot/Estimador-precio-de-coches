@@ -93,7 +93,6 @@ def get_model_ranks(brand: str, model: str, depr_table: pd.DataFrame):
     }
 
 
-
 model = load_model()
 cars = load_data()
 depr_table = compute_depreciation_table(cars)
@@ -113,6 +112,18 @@ st.set_page_config(
 
 # CSS para darle estilo
 st.markdown("---")
+
+st.markdown(
+    """
+    <h1 style='text-align: center; color: #ffffff; margin-bottom: 5px;'>
+         Modelo avanzado de valoración y rentabilidad de vehículos
+    </h1>
+    <p style='text-align: center; color: #b5b5b5; font-size: 17px; margin-top: -10px;'>
+        Datos reales
+    </p>
+    """,
+    unsafe_allow_html=True
+)
 
 
 #  Pestañas principales
@@ -172,10 +183,7 @@ with tab_pred:
 
     st.markdown("")
 
- 
     #  Consumo (L/100 km)
-    
-
     subset = cars.copy()
 
     # Nivel 1: misma marca, modelo, motor y combustible
@@ -234,9 +242,7 @@ with tab_pred:
         )
         consumption_l_100km = default_consumption
 
-    
     #  Predicción
-    
     col_btn, _ = st.columns([1, 3])
     with col_btn:
         predict_clicked = st.button("🔍 Predecir precio", use_container_width=True)
@@ -302,7 +308,7 @@ with tab_pred:
         st.markdown("### 📈 Cómo cambia el precio para coches como este")
         tab_km, tab_year = st.tabs(["Precio vs km", "Precio vs año"])
 
-        #Precio vs km 
+        # Precio vs km 
         with tab_km:
             km_min = max(0, mileage_km - 100_000)
             km_max = mileage_km + 100_000
@@ -341,16 +347,16 @@ with tab_pred:
                 line_color="#f97316",
                 annotation_text="Km introducidos",
                 annotation_position="top left",
-        )
+            )
 
-# Punto destacado de tu coche (en esos km)
+            # Punto destacado de tu coche (en esos km)
             fig_km.add_scatter(
                 x=[mileage_km],
                 y=[pred_price],
                 mode="markers",
                 marker=dict(size=9),
                 name="Tu coche",
-)
+            )
             fig_km.update_layout(
                 template="plotly_dark",
                 height=420,
@@ -359,16 +365,18 @@ with tab_pred:
             st.plotly_chart(fig_km, use_container_width=True)
             st.caption("Simulación manteniendo fijo el resto de características y variando solo los kilómetros.")
 
-        #  Precio vs año 
+        #  Precio vs año
+        #       
         with tab_year:
-    # Usamos solo años desde el año de tu coche hasta el último año disponible (2020)
+            # Año base del modelo 
             base_year = 2020
             years_available = sorted(y for y in cars["year"].unique() if 1995 <= y <= base_year)
 
-    # Nos quedamos con los años >= año de tu coche
-            years_range = [y for y in years_available if y >= year]
+            # Tomamos hasta 3 años hacia atrás desde el año de tu coche (misma lógica del modelo)
+            min_year_range = max(min(years_available), year - 3)
+            years_range = [y for y in years_available if min_year_range <= y <= base_year]
 
-    # Si por lo que sea hay muy pocos, usamos todos como fallback
+            # Si por lo que sea hay muy pocos, usamos todos como fallback
             if len(years_range) < 3:
                 years_range = years_available
 
@@ -381,33 +389,69 @@ with tab_pred:
                 "brand": [brand] * len(years_range),
                 "transmission": [transmission] * len(years_range),
                 "fuelType": [fuelType] * len(years_range),
-        })
+            })
             df_year["car_age"] = base_year - df_year["year"]
 
             pool_year = Pool(df_year, cat_features=CAT_FEATURES)
             df_year["Precio estimado (€)"] = model.predict(pool_year)
 
-    # Forzamos que el punto del año de tu coche coincida EXACTAMENTE con la predicción principal
+            # Forzamos que el punto correspondiente al coche que has configurado
+            # coincida EXACTAMENTE con la predicción principal
             df_year.loc[df_year["year"] == year, "Precio estimado (€)"] = pred_price
 
+            # ==== REESCALAMOS EL EJE X PARA QUE TU PUNTO SEA 2025 ====
+            current_year_display = 2025  # Año actual (cuando haces la predicción)
+            # Este será el eje "de mentira" para visualizar: 2015, 2016, ..., 2025
+            df_year["año_escenario"] = df_year["year"] - year + current_year_display
+
+           
+                        # === EXTENDER LA CURVA HASTA 2030 (5 años más) ===
+            target_max_year = 2030  # año máximo que queremos ver en el gráfico
+
+            # Ordenamos por año de escenario por si acaso
+            df_year = df_year.sort_values("año_escenario")
+
+            # DataFrame que usaremos para pintar (lo podremos alargar)
+            df_plot = df_year[["año_escenario", "Precio estimado (€)"]].copy()
+
+            max_escenario = df_plot["año_escenario"].max()
+
+            # Solo extrapolamos si aún no llegamos a 2030 y tenemos al menos 2 puntos
+            if max_escenario < target_max_year and len(df_plot) >= 2:
+                # Pendiente (€/año) entre los dos últimos puntos
+                last_two = df_plot.tail(2)
+                dy = last_two.iloc[1]["Precio estimado (€)"] - last_two.iloc[0]["Precio estimado (€)"]
+                dx = last_two.iloc[1]["año_escenario"] - last_two.iloc[0]["año_escenario"]
+                slope = dy / dx if dx != 0 else 0
+
+                last_year = max_escenario
+                last_price = last_two.iloc[1]["Precio estimado (€)"]
+
+                # Vamos añadiendo años hasta 2030 siguiendo esa pendiente
+                for new_year in range(int(last_year) + 1, target_max_year + 1):
+                    last_price += slope
+                    df_plot.loc[len(df_plot)] = [new_year, last_price]
+
+            # A partir de aquí, usamos df_plot en vez de df_year para el gráfico
             fig_year = px.line(
-                df_year,
-                x="year",
+                df_plot,
+                x="año_escenario",
                 y="Precio estimado (€)",
                 markers=True,
                 labels={
-                "year": "Año de matriculación",
-                "Precio estimado (€)": "Precio estimado (€)",
+                    "año_escenario": "Año (escenario)",
+                    "Precio estimado (€)": "Precio estimado (€)",
                 },
-                title="Impacto del año de matriculación en el precio estimado",
+                title="Cómo habría cambiado el precio de un coche igual",
             )
 
-    # Línea vertical para marcar claramente el año de tu coche
+
+            # Línea vertical para marcar claramente el año actual (predicción)
             fig_year.add_vline(
-                x=year,
+                x=current_year_display,
                 line_dash="dash",
                 line_color="#f97316",
-                annotation_text="Año de tu coche",
+                annotation_text="Año actual (2025)",
                 annotation_position="top left",
             )
 
@@ -418,110 +462,101 @@ with tab_pred:
                 title_font_size=22,
                 xaxis_title_font_size=16,
                 yaxis_title_font_size=16,
+                xaxis=dict(tickmode="linear", dtick=1),
             )
 
             st.plotly_chart(fig_year, use_container_width=True)
             st.caption(
-            "Desde el año de tu coche hacia adelante se muestra cuánto valdría un coche igual "
-            "si fuera más nuevo, según los datos históricos (hasta 2020)."
+                "Tomamos tu coche tal y como lo has configurado y usamos el modelo para estimar "
+                "qué habría valido si fuera más antiguo o más nuevo, manteniendo el mismo kilometraje. "
+                "El punto de 2025 es el precio predicho actual."
             )
-
-    
-#  Ranking de inversión 
-
-st.markdown("###  Tu coche en el ranking de inversión")
-
-ranks = get_model_ranks(brand, modelo, depr_table)
-
-if ranks is None:
-    st.caption(
-        "El modelo seleccionado no aparece en la tabla de depreciación "
-        "(no hay datos históricos suficientes para calcular su ranking)."
-    )
-else:
-    slope_value = ranks["slope"]
-    pos_best = ranks["pos_best"]
-    total_models = ranks["total"]
-
-    
-    # resumen del modelo
-    
-    mask_price_model = (cars["brand"] == brand) & (cars["model"] == modelo)
-    avg_price_model = cars.loc[mask_price_model, "price"].mean()
-
-    col_r1, col_r2 = st.columns(2)
-    with col_r1:
-        st.metric(
-            "Posición en ranking (1 = mejor inversión)",
-            f"{pos_best} / {total_models}",
-        )
-
-    with col_r2:
-        if not np.isnan(avg_price_model) and avg_price_model != 0:
-            perc_year = slope_value / avg_price_model * 100
-            sign = "+" if perc_year >= 0 else ""
-            delta_str = f"{sign}{perc_year:.1f}% / año"
-            
-            st.metric(
-            "Variación anual del precio",
-            f"{slope_value:,.0f} €/año",
-            delta=delta_str,
-            help=(
-                "Cambio medio del precio cada año según los datos del mercado. "
-                "Si es negativo, el modelo pierde valor; si está cerca de 0, mantiene bien el precio."
-            ),
-        )
-        else:
-            st.metric(
-            "Variación anual del precio",
-            f"{slope_value:,.0f} €/año",
-        )
-
-    
-
-
+ 
+             
         
 
-   
 
-   
-    #Modelos más parecidos (vecinos)
-    
-    ranking_sorted = depr_table.sort_values("slope", ascending=False).reset_index(drop=True)
-    ranking_sorted["pos_inversion"] = ranking_sorted.index + 1
-
-    mask_model = (ranking_sorted["brand"] == brand) & (ranking_sorted["model"] == modelo)
-
-    if mask_model.any():
-        idx = ranking_sorted.index[mask_model][0]
-        start = max(0, idx - 5)
-        end = min(len(ranking_sorted), idx + 6)
-        view = ranking_sorted.iloc[start:end].copy()
-    else:
-        view = ranking_sorted.head(5).copy()
-
-    view["tu_modelo"] = np.where(
-        (view["brand"] == brand) & (view["model"] == modelo),
-        "⭐",
-        ""
-    )
-
-    view["variación_€/año"] = view["slope"].round(0).astype(int)
-
-    st.markdown("#### Modelos con comportamiento similar al tuyo")
-    st.dataframe(
-        view[["pos_inversion", "brand", "model", "variación_€/año", "tu_modelo"]],
-        use_container_width=True,
-        hide_index=True,
-    )
-
-        
-#  TAB 2: INVERSIÓN çde la importancia
+#  TAB 2: INVERSIÓN
 
 with tab_inv:
 
-    st.subheader("📉 Zona inversión: cómo se deprecian los modelos")
+    #  Ranking de inversión de TU coche
+    st.markdown("###  Tu coche en el ranking de inversión")
 
+    ranks = get_model_ranks(brand, modelo, depr_table)
+
+    if ranks is None:
+        st.caption(
+            "El modelo seleccionado no aparece en la tabla de depreciación "
+            "(no hay datos históricos suficientes para calcular su ranking)."
+        )
+    else:
+        slope_value = ranks["slope"]
+        pos_best = ranks["pos_best"]
+        total_models = ranks["total"]
+
+        # Resumen del modelo
+        mask_price_model = (cars["brand"] == brand) & (cars["model"] == modelo)
+        avg_price_model = cars.loc[mask_price_model, "price"].mean()
+
+        col_r1, col_r2 = st.columns(2)
+        with col_r1:
+            st.metric(
+                "Posición en ranking (1 = mejor inversión)",
+                f"{pos_best} / {total_models}",
+            )
+
+        with col_r2:
+            if not np.isnan(avg_price_model) and avg_price_model != 0:
+                perc_year = slope_value / avg_price_model * 100
+                sign = "+" if perc_year >= 0 else ""
+                delta_str = f"{sign}{perc_year:.1f}% / año"
+
+                st.metric(
+                    "Variación anual del precio",
+                    f"{slope_value:,.0f} €/año",
+                    delta=delta_str,
+                    help=(
+                        "Cambio medio del precio cada año según los datos del mercado. "
+                        "Si es negativo, el modelo pierde valor; si está cerca de 0, mantiene bien el precio."
+                    ),
+                )
+            else:
+                st.metric(
+                    "Variación anual del precio",
+                    f"{slope_value:,.0f} €/año",
+                )
+
+        # Modelos más parecidos (vecinos)
+        ranking_sorted = depr_table.sort_values("slope", ascending=False).reset_index(drop=True)
+        ranking_sorted["pos_inversion"] = ranking_sorted.index + 1
+
+        mask_model = (ranking_sorted["brand"] == brand) & (ranking_sorted["model"] == modelo)
+
+        if mask_model.any():
+            idx = ranking_sorted.index[mask_model][0]
+            start = max(0, idx - 5)
+            end = min(len(ranking_sorted), idx + 6)
+            view = ranking_sorted.iloc[start:end].copy()
+        else:
+            view = ranking_sorted.head(5).copy()
+
+        view["tu_modelo"] = np.where(
+            (view["brand"] == brand) & (view["model"] == modelo),
+            "⭐",
+            ""
+        )
+
+        view["variación_€/año"] = view["slope"].round(0).astype(int)
+
+        st.markdown("#### Modelos con comportamiento similar al tuyo")
+        st.dataframe(
+            view[["pos_inversion", "brand", "model", "variación_€/año", "tu_modelo"]],
+            use_container_width=True,
+            hide_index=True,
+        )
+
+    # Explicación general y rankings globales
     if depr_table.empty:
         st.info(
             "Todavía no se ha podido calcular la depreciación por modelo. "
@@ -544,7 +579,7 @@ with tab_inv:
 
         tab_modelos, tab_marcas = st.tabs(["Ranking por modelo", "Ranking por marca"])
 
-        #Ranking por modelo 
+        # Ranking por modelo 
         with tab_modelos:
             top_n_models = st.slider(
                 "Número de modelos a mostrar",
@@ -577,9 +612,11 @@ with tab_inv:
                 use_container_width=True,
                 hide_index=True,
             )
+# Ordenamos de mayor a menor pendiente
+            df_models_plot = top_models.sort_values("slope", ascending=True).head(top_n_models)
 
             fig_models = px.bar(
-                top_models.sort_values("slope", ascending=False),
+                df_models_plot,
                 x="pendiente_€/año",
                 y="model",
                 color="brand",
@@ -589,14 +626,20 @@ with tab_inv:
                     "model": "Modelo",
                 },
                 title="Modelos que se deprecian más lento",
-            )
+       
+)
+
             fig_models.update_layout(
-                template="plotly_dark",
+                template="seaborn",
                 height=520,
                 margin=dict(l=0, r=10, t=50, b=10),
-            )
+                yaxis=dict(
+                    categoryorder="array",
+                    categoryarray=df_models_plot["model"].tolist()
+    ),
+)
+
             st.plotly_chart(fig_models, use_container_width=True)
-            print(1234)
 
         # Ranking por marca 
         with tab_marcas:
@@ -626,19 +669,22 @@ with tab_inv:
                 hide_index=True,
             )
 
+
+            
+
             fig_brands = px.bar(
-                brand_depr.head(top_n_brands).sort_values("slope", ascending=False),
+                brand_depr.head(top_n_brands).sort_values("slope", ascending=True),
                 x="pendiente_€/año",
                 y="brand",
                 orientation="h",
                 labels={
-                    "pendiente_€/año": "Pendiente media (€/año, más alta = mejor inversión)",
+                    "pendiente_€/año": "Ganancia media (€/año)",
                     "brand": "Marca",
                 },
-                title="Marcas con mejor comportamiento medio de precio",
+                title="Marcas que mejor mantienen su valor",
             )
             fig_brands.update_layout(
-                template="plotly_dark",
+                template="seaborn",
                 height=520,
                 margin=dict(l=0, r=10, t=50, b=10),
             )
