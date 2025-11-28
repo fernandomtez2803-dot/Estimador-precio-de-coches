@@ -270,7 +270,7 @@ with tab_pred:
         min_price = pred_price - MAE_MODEL
         max_price = pred_price + MAE_MODEL
 
-        st.markdown("## 🧾 Resultado de la estimación")
+        st.markdown("##  Resultado de la estimación")
         st.markdown(
             f"""
             <div class="result-card">
@@ -279,7 +279,7 @@ with tab_pred:
                     {pred_price:,.0f} € 
                 </p>
                 <p style="color:#9ca3af; margin-bottom:0.5rem;">
-                    Intervalo aproximado (± MAE ≈ {MAE_MODEL:,.0f} €):
+                    Intervalo aproximado :
                     <br>
                     <span style="font-weight:600;">{min_price:,.0f} €</span>
                     — 
@@ -565,15 +565,16 @@ with tab_inv:
     else:
         st.markdown(
             """
-            **¿Qué es la pendiente (slope)?**
+           
+            **Modelos que mejor mantienen su valor con el paso del tiempo**
 
-            - Es el cambio medio de precio por año (**€/año**) al ajustar una recta precio ~ año.
-            - Ejemplos rápidos:
-                - `-1.500 €/año` → el coche pierde unos 1.500 € de valor por año (se deprecia rápido).
-                - `-300 €/año` → se deprecia muy poco.
-                - `+200 €/año` → en nuestros datos ha subido de precio (versiones raras, poca oferta, etc.).
+            En esta sección se muestran los modelos de coche que, según los datos históricos del mercado, conservan mejor su precio a lo largo de los años.
 
-            👉 **Cuanto más ALTA es la pendiente, mejor mantiene su valor**.
+            Estos modelos destacan porque su valor tiende a depreciarse menos e incluso, en algunos casos, a subir debido a la demanda, rareza o características especiales.
+
+            La tabla ordena los vehículos de mayor a menor rendimiento en este sentido, permitiendo identificar fácilmente qué coches son una mejor inversión a largo plazo.
+
+            
             """
         )
 
